@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mentor-dashboard"
+version = "0.1.0"
+description = "Generate weekly time tracking reports and visualizations for project teams"
+authors = [
+    {name = "Mentor Dashboard", email = "dashboard@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "pandas>=2.0.0",
+    "matplotlib>=3.7.0", 
+    "reportlab>=4.0.0",
+    "python-dateutil>=2.8.0"
+]
+
+[project.scripts]
+mentor-dashboard = "mentor_dashboard.main:main"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0"
+]
