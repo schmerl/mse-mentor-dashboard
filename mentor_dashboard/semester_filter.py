@@ -20,9 +20,15 @@ def assign_entry_to_semester(
         SemesterConfig that the entry belongs to, or None if no match
     """
     entry_date = entry.start_date
+    # Ensure we're comparing dates only
+    if hasattr(entry_date, 'date'):
+        entry_date = entry_date.date()
     
     for semester in semesters:
-        if semester.start_date.date() <= entry_date <= semester.end_date.date():
+        semester_start = semester.start_date.date() if hasattr(semester.start_date, 'date') else semester.start_date
+        semester_end = semester.end_date.date() if hasattr(semester.end_date, 'date') else semester.end_date
+        
+        if semester_start <= entry_date <= semester_end:
             return semester
     
     return None

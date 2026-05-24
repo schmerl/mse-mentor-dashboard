@@ -7,6 +7,8 @@ from pathlib import Path
 
 from .data_parser import parse_csv_file
 from .name_resolver import NameResolver
+from .config_loader import load_config, validate_config, get_semester_by_name
+from .semester_filter import group_entries_by_semester, filter_semesters_with_data
 from .report_generator import generate_student_summary_data
 from .pdf_generator import generate_student_summary_pdf
 
@@ -24,16 +26,16 @@ def main() -> None:
     )
     
     parser.add_argument(
-        "--expected-hours",
-        type=float,
+        "--config",
+        type=Path,
         required=True,
-        help="Expected number of hours per student per week"
+        help="Path to config.yml file with semester and roster configuration"
     )
     
     parser.add_argument(
-        "--roster",
-        type=Path,
-        help="Path to roster.csv file for name resolution (displays 'First Last' names)"
+        "--semesters",
+        type=str,
+        help="Comma-separated list of semester names to include (default: all semesters with data)"
     )
     
     parser.add_argument(
@@ -69,13 +71,18 @@ def main() -> None:
     # Create output directory if it doesn't exist
     args.output.parent.mkdir(parents=True, exist_ok=True)
     
-    # Validate input file exists
+    # Validate input files exist
     if not args.csv_file.exists():
         print(f"Error: CSV file '{args.csv_file}' not found.", file=sys.stderr)
         sys.exit(1)
     
+    if not args.config.exists():
+        print(f"Error: Config file '{args.config}' not found.", file=sys.stderr)
+        sys.exit(1)
+    
     if args.verbose:
         print(f"Processing CSV file: {args.csv_file}")
+        print(f"Loading config: {args.config}")
         print(f"Output will be saved to: {args.output}")
         if args.team:
             print(f"Filtering by team: {args.team}")
@@ -83,21 +90,28 @@ def main() -> None:
             print(f"Filtering by student: {args.student}")
     
     try:
-        # Initialize name resolver if roster file provided
-        name_resolver = None
-        if args.roster:
-            if not args.roster.exists():
-                print(f"Warning: Roster file '{args.roster}' not found. Names will not be resolved.", file=sys.stderr)
-            else:
-                if args.verbose:
-                    print(f"Loading roster file: {args.roster}")
-                try:
-                    name_resolver = NameResolver(str(args.roster))
-                    stats = name_resolver.get_stats()
-                    if args.verbose:
-                        print(f"Name resolver loaded: {stats['total_names_in_roster']} names from {stats['roster_entries']} roster entries")
-                except Exception as e:
-                    print(f"Warning: Could not load roster file: {e}. Names will not be resolved.", file=sys.stderr)
+        # Load configuration
+        if args.verbose:
+            print("Loading configuration...")
+        
+        config = load_config(args.config)
+        
+        # Validate configuration
+        errors = validate_config(config)
+        if errors:
+            print(f"Error: Configuration validation failed:", file=sys.stderr)
+            for error in errors:
+                print(f"  - {error}", file=sys.stderr)
+            sys.exit(1)
+        
+        if args.verbose:
+            print(f"✓ Loaded config: {config}")
+        
+        # Initialize name resolver from config
+        name_resolver = NameResolver.from_config(config.teams)
+        if args.verbose:
+            stats = name_resolver.get_stats()
+            print(f"✓ Name resolver loaded: {stats['total_names_in_roster']} names")
         
         # Parse CSV data
         if args.verbose:
@@ -108,12 +122,51 @@ def main() -> None:
         if args.verbose:
             print(f"Successfully parsed {len(entries)} time entries")
         
+        # Determine which semesters to include
+        if args.semesters:
+            semester_names = [s.strip() for s in args.semesters.split(',')]
+            selected_semesters = []
+            for name in semester_names:
+                semester = get_semester_by_name(config, name)
+                if semester:
+                    selected_semesters.append(semester)
+                else:
+                    print(f"Warning: Semester '{name}' not found in config", file=sys.stderr)
+            
+            if not selected_semesters:
+                print(f"Error: No valid semesters selected", file=sys.stderr)
+                sys.exit(1)
+        else:
+            selected_semesters = filter_semesters_with_data(config.semesters, entries)
+            
+            if not selected_semesters:
+                print(f"Error: No data found for any semester", file=sys.stderr)
+                sys.exit(1)
+        
+        if args.verbose:
+            print(f"Semesters to include: {', '.join(s.name for s in selected_semesters)}")
+        
+        # For now, use first semester (multi-semester support to be added)
+        if len(selected_semesters) > 1:
+            print(f"Warning: Multi-semester reporting not yet fully implemented. Using first semester: {selected_semesters[0].name}", file=sys.stderr)
+        
+        semester = selected_semesters[0]
+        semester_entries_dict = group_entries_by_semester(entries, [semester])
+        semester_entries = semester_entries_dict.get(semester.name, [])
+        
+        if not semester_entries:
+            print(f"Error: No entries found for semester {semester.name}", file=sys.stderr)
+            sys.exit(1)
+        
+        if args.verbose:
+            print(f"Processing {len(semester_entries)} entries for {semester.name}")
+        
         # Generate student summaries
         if args.verbose:
             print("Generating student summaries...")
         
         summaries = generate_student_summary_data(
-            entries,
+            semester_entries,
             team_filter=args.team,
             student_filter=args.student
         )
@@ -131,7 +184,9 @@ def main() -> None:
         if args.verbose:
             print("Generating PDF report...")
         
-        generate_student_summary_pdf(summaries, args.output, args.expected_hours, entries)
+        # Use semester hours as expected hours
+        expected_hours = semester.hours
+        generate_student_summary_pdf(summaries, args.output, expected_hours, semester_entries)
         
         print(f"✅ Student summary report successfully generated: {args.output}")
         

@@ -118,5 +118,5 @@ class NameResolver:
         """
         return {
             'total_names_in_roster': len(self._name_mapping) if self._name_mapping else 0,
-            'roster_entries': len(self.roster_df)
+            'roster_entries': len(self.roster_df) if self.roster_df is not None else len(self._name_mapping) if self._name_mapping else 0
         }
