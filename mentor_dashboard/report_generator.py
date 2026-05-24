@@ -365,3 +365,81 @@ def get_all_teams_historical_data(entries: list[TimeEntry]) -> dict:
             all_teams_weekly[team_name][week_start] = total_hours
     
     return all_teams_weekly
+
+
+@dataclass
+class StudentSummary:
+    """Summary data for a single student."""
+    name: str
+    team: str
+    weekly_hours: dict[datetime, float]  # week_start -> hours
+    total_hours: float
+    activities: dict[str, float]  # activity -> total hours
+    categories: dict[str, float]  # category -> total hours
+    
+
+def generate_student_summary_data(
+    entries: list[TimeEntry],
+    team_filter: t.Optional[str] = None,
+    student_filter: t.Optional[str] = None
+) -> list[StudentSummary]:
+    """Generate summary data for students.
+    
+    Args:
+        entries: All time entries
+        team_filter: Optional team name to filter by
+        student_filter: Optional student name to filter by
+        
+    Returns:
+        List of StudentSummary objects
+    """
+    # Apply filters
+    filtered_entries = entries
+    if team_filter:
+        filtered_entries = [e for e in filtered_entries if e.group == team_filter]
+    if student_filter:
+        filtered_entries = [e for e in filtered_entries if e.user == student_filter]
+    
+    if not filtered_entries:
+        return []
+    
+    # Group by student
+    student_entries: dict[str, list[TimeEntry]] = {}
+    for entry in filtered_entries:
+        if entry.user not in student_entries:
+            student_entries[entry.user] = []
+        student_entries[entry.user].append(entry)
+    
+    # Generate summaries
+    summaries: list[StudentSummary] = []
+    for student_name, student_entry_list in sorted(student_entries.items()):
+        # Get team (use first entry's team, should be consistent)
+        team = student_entry_list[0].group
+        
+        # Calculate weekly hours
+        weekly_hours: dict[datetime, float] = {}
+        for entry in student_entry_list:
+            week_start = entry.week_start
+            weekly_hours[week_start] = weekly_hours.get(week_start, 0) + entry.duration_hours
+        
+        # Calculate total hours
+        total_hours = sum(weekly_hours.values())
+        
+        # Aggregate activities and categories
+        activities: dict[str, float] = {}
+        categories: dict[str, float] = {}
+        for entry in student_entry_list:
+            activities[entry.activity] = activities.get(entry.activity, 0) + entry.duration_hours
+            categories[entry.category] = categories.get(entry.category, 0) + entry.duration_hours
+        
+        summary = StudentSummary(
+            name=student_name,
+            team=team,
+            weekly_hours=weekly_hours,
+            total_hours=total_hours,
+            activities=activities,
+            categories=categories
+        )
+        summaries.append(summary)
+    
+    return summaries

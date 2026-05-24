@@ -76,6 +76,63 @@ uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --expected-hours 15 --roster
 uv run mentor-dashboard --help
 ```
 
+## Student Summary Reports
+
+Generate individual student summaries showing week-by-week participation, hours trends, and activity breakdowns.
+
+### Basic Student Summary
+```bash
+# Generate summaries for all students
+uv run student-summary "data/Raw CSV_Detailed.csv" --expected-hours 12
+```
+
+### Filter by Team
+```bash
+# Generate summaries for students in a specific team
+uv run student-summary "data/Raw CSV_Detailed.csv" --expected-hours 12 --team Troutwood
+```
+
+### Filter by Student
+```bash
+# Generate summary for a specific student
+uv run student-summary "data/Raw CSV_Detailed.csv" --expected-hours 12 --student "Luke Kiebert"
+```
+
+### With Name Resolution
+```bash
+# Use roster for proper name formatting
+uv run student-summary "data/Raw CSV_Detailed.csv" --expected-hours 12 --roster roster.csv
+```
+
+### Combined Filters
+```bash
+# Team + student filter with custom output
+uv run student-summary "data/Raw CSV_Detailed.csv" --expected-hours 12 --team Troutwood --student "Luke Kiebert" -o student_luke.pdf
+```
+
+### Student Summary Report Contents
+
+📋 **Title Page:**
+- Total number of students
+- Total hours logged across all students
+- Average hours per student
+- Expected hours per week
+
+👤 **Per-Student Pages:**
+- Student name and team
+- Summary statistics (total hours, weeks active, average per week)
+- **Weekly Hours Table:**
+  - Week-by-week breakdown (most recent first)
+  - Hours logged each week
+  - Color-coded status (meeting/above/below expectations)
+- **Hours Trend Chart:**
+  - Line chart showing weekly hours
+  - Expected hours reference line
+- **Time Distribution Charts:**
+  - Time by Category (pie chart)
+  - Time by Activity (pie chart)
+  - Aggregated across all weeks
+
 ## CSV Format Requirements
 
 ### Time Tracking CSV
