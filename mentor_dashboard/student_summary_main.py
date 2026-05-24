@@ -184,9 +184,9 @@ def main() -> None:
         if args.verbose:
             print("Generating PDF report...")
         
-        # Use semester hours as expected hours
-        expected_hours = semester.hours
-        generate_student_summary_pdf(summaries, args.output, expected_hours, semester_entries)
+        # Pass semester config for calendar-aware expected hours
+        from .pdf_generator import generate_student_summary_pdf_with_semester
+        generate_student_summary_pdf_with_semester(summaries, args.output, semester, semester_entries)
         
         print(f"✅ Student summary report successfully generated: {args.output}")
         

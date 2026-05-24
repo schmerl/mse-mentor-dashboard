@@ -169,19 +169,17 @@ def main() -> None:
             else:
                 print("Generating combined PDF report...")
         
-        # For now, use a fixed expected hours (will be replaced with calendar-aware calculation)
-        expected_hours = semester.hours
-        
+        # Pass semester config for calendar-aware expected hours
         if args.split_by_team:
-            from .pdf_generator import generate_team_split_reports
-            output_files = generate_team_split_reports(semester_entries, args.output, expected_hours)
+            from .pdf_generator import generate_team_split_reports_with_semester
+            output_files = generate_team_split_reports_with_semester(semester_entries, args.output, semester)
             
             print(f"✅ Team reports successfully generated:")
             for team, file_path in output_files.items():
                 print(f"   📊 {team}: {file_path}")
         else:
-            from .pdf_generator import generate_pdf_report
-            generate_pdf_report(semester_entries, args.output, expected_hours)
+            from .pdf_generator import generate_pdf_report_with_semester
+            generate_pdf_report_with_semester(semester_entries, args.output, semester)
             print(f"✅ Report successfully generated: {args.output}")
         
     except Exception as e:
