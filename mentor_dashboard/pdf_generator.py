@@ -815,3 +815,230 @@ def generate_team_split_reports(entries: list[TimeEntry], output_path: Path, exp
         pdf.build_pdf()
     
     return output_files
+
+
+def generate_student_summary_pdf(
+    summaries: list,
+    output_path: Path,
+    expected_hours: float = 0.0,
+    all_entries: list[TimeEntry] = None
+) -> None:
+    """Generate student summary PDF with one page per student.
+    
+    Args:
+        summaries: List of StudentSummary objects from report_generator
+        output_path: Path where PDF should be saved
+        expected_hours: Expected hours per student per week
+        all_entries: All time entries for calculating team and class averages
+    """
+    from .report_generator import StudentSummary, format_week_range, get_hours_status_color, get_user_historical_data
+    from .charts import create_individual_trend_chart, create_pie_chart, figure_to_bytes
+    
+    if not summaries:
+        print("No student data to generate report.")
+        return
+    
+    # Initialize PDF generator
+    pdf = MentorDashboardPDF(output_path)
+    
+    # Add title page
+    title = Paragraph("Student Summary Report", pdf.styles['CustomTitle'])
+    pdf.story.append(title)
+    pdf.story.append(Spacer(1, 20))
+    
+    # Summary stats
+    num_students = len(summaries)
+    total_hours = sum(s.total_hours for s in summaries)
+    avg_hours_per_student = total_hours / num_students if num_students > 0 else 0
+    
+    summary_data = [
+        ["Total Students", str(num_students)],
+        ["Total Hours Logged", f"{total_hours:.1f} hours"],
+        ["Average Hours per Student", f"{avg_hours_per_student:.1f} hours"],
+        ["Expected Hours per Week", f"{expected_hours:.1f} hours"],
+        ["Generated", datetime.now().strftime('%B %d, %Y at %I:%M %p')]
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[2*inch, 2*inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    
+    pdf.story.append(summary_table)
+    pdf.story.append(PageBreak())
+    
+    # Add a page for each student
+    for summary in summaries:
+        # Student header
+        student_title = Paragraph(
+            f"{summary.name} ({summary.team})",
+            pdf.styles['TeamTitle']
+        )
+        pdf.story.append(student_title)
+        pdf.story.append(Spacer(1, 12))
+        
+        # Summary stats for this student
+        num_weeks = len(summary.weekly_hours)
+        avg_hours_per_week = summary.total_hours / num_weeks if num_weeks > 0 else 0
+        
+        student_stats_data = [
+            ["Total Hours", f"{summary.total_hours:.1f} hours"],
+            ["Weeks Active", str(num_weeks)],
+            ["Avg Hours/Week", f"{avg_hours_per_week:.1f} hours"]
+        ]
+        
+        stats_table = Table(student_stats_data, colWidths=[2*inch, 1.5*inch])
+        stats_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e6f3ff')),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('PADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        pdf.story.append(stats_table)
+        pdf.story.append(Spacer(1, 12))
+        
+        # Category summary table
+        category_title = Paragraph("Time by Category", pdf.styles['Heading4'])
+        pdf.story.append(category_title)
+        pdf.story.append(Spacer(1, 6))
+        
+        # Create category summary table
+        category_table_data = [["Category", "Hours", "Percentage"]]
+        sorted_categories = sorted(summary.categories.items(), key=lambda x: x[1], reverse=True)
+        
+        for category, hours in sorted_categories:
+            percentage = (hours / summary.total_hours * 100) if summary.total_hours > 0 else 0
+            category_table_data.append([category, f"{hours:.1f}h", f"{percentage:.1f}%"])
+        
+        category_table = Table(category_table_data, colWidths=[3*inch, 1.5*inch, 1.5*inch])
+        category_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e6f3ff')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('ALIGN', (1, 0), (2, -1), 'RIGHT'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')
+        ]))
+        
+        pdf.story.append(category_table)
+        pdf.story.append(Spacer(1, 12))
+        
+        # Activity summary table
+        activity_title = Paragraph("Time by Activity", pdf.styles['Heading4'])
+        pdf.story.append(activity_title)
+        pdf.story.append(Spacer(1, 6))
+        
+        # Create activity summary table
+        activity_table_data = [["Activity", "Hours", "Percentage"]]
+        sorted_activities = sorted(summary.activities.items(), key=lambda x: x[1], reverse=True)
+        
+        for activity, hours in sorted_activities:
+            percentage = (hours / summary.total_hours * 100) if summary.total_hours > 0 else 0
+            activity_table_data.append([activity, f"{hours:.1f}h", f"{percentage:.1f}%"])
+        
+        activity_table = Table(activity_table_data, colWidths=[3*inch, 1.5*inch, 1.5*inch])
+        activity_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e6f3ff')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('ALIGN', (1, 0), (2, -1), 'RIGHT'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')
+        ]))
+        
+        pdf.story.append(activity_table)
+        pdf.story.append(Spacer(1, 12))
+        
+        # Weekly hours trend chart with team and class averages
+        hours_chart_title = Paragraph("Hours Trend (vs Team and Class Averages)", pdf.styles['Heading4'])
+        pdf.story.append(hours_chart_title)
+        pdf.story.append(Spacer(1, 6))
+        
+        # Use full trend chart if we have all entries
+        if all_entries:
+            # Get historical data including team and class averages
+            historical_data = get_user_historical_data(all_entries, summary.name, summary.team)
+            
+            # Create comprehensive trend chart
+            hours_chart = create_individual_trend_chart(
+                summary.name,
+                historical_data['user_weekly'],
+                historical_data['team_avg_weekly'],
+                historical_data['all_teams_avg_weekly'],
+                figsize=(10, 6)
+            )
+        else:
+            # Fallback to simple chart
+            hours_chart = create_student_summary_chart(
+                summary.name,
+                summary.weekly_hours,
+                expected_hours,
+                figsize=(8, 5)
+            )
+        
+        hours_chart_bytes = figure_to_bytes(hours_chart).getvalue()
+        hours_img = Image(BytesIO(hours_chart_bytes), width=6*inch, height=3.6*inch)
+        pdf.story.append(hours_img)
+        pdf.story.append(Spacer(1, 12))
+        
+        # Activity and category pie charts
+        charts_title = Paragraph("Time Distribution", pdf.styles['Heading4'])
+        pdf.story.append(charts_title)
+        pdf.story.append(Spacer(1, 6))
+        
+        # Create pie charts
+        category_chart = create_pie_chart(
+            summary.categories,
+            f"{summary.name} - Time by Category",
+            figsize=(10, 8),
+            chart_type='category'
+        )
+        activity_chart = create_pie_chart(
+            summary.activities,
+            f"{summary.name} - Time by Activity",
+            figsize=(10, 8),
+            chart_type='activity'
+        )
+        
+        category_bytes = figure_to_bytes(category_chart).getvalue()
+        activity_bytes = figure_to_bytes(activity_chart).getvalue()
+        
+        # Add charts side by side
+        try:
+            category_img = Image(BytesIO(category_bytes), width=3.5*inch, height=2.6*inch)
+            activity_img = Image(BytesIO(activity_bytes), width=3.5*inch, height=2.6*inch)
+            
+            chart_table = Table([[category_img, activity_img]], colWidths=[3.7*inch, 3.7*inch])
+            chart_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            
+            pdf.story.append(chart_table)
+        except Exception as e:
+            # Fallback: add charts vertically
+            print(f"Warning: Could not create side-by-side charts: {e}")
+            category_img = Image(BytesIO(category_bytes), width=4*inch, height=3*inch)
+            activity_img = Image(BytesIO(activity_bytes), width=4*inch, height=3*inch)
+            pdf.story.append(category_img)
+            pdf.story.append(Spacer(1, 6))
+            pdf.story.append(activity_img)
+        
+        # Add page break after each student (except the last one)
+        if summary != summaries[-1]:
+            pdf.story.append(PageBreak())
+    
+    # Build PDF
+    pdf.build_pdf()
