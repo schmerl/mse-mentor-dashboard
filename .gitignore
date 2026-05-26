@@ -207,6 +207,8 @@ marimo/_lsp/
 __marimo__/
 
 # Project specific
+config.yml
+config-*.yml
 roster.csv
 data/
 *.pdf
