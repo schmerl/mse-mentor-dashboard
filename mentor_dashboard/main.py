@@ -2,14 +2,16 @@
 
 import argparse
 import sys
-import typing as t
 from pathlib import Path
 
 from .data_parser import parse_csv_file
 from .name_resolver import NameResolver
 from .config_loader import load_config, validate_config, get_semester_by_name
-from .semester_filter import group_entries_by_semester, filter_semesters_with_data
-from .pdf_generator import generate_pdf_report
+from .semester_filter import (
+    filter_semesters_with_data,
+    get_latest_semester_with_data,
+    group_entries_by_semester,
+)
 
 
 def main() -> None:
@@ -40,7 +42,11 @@ def main() -> None:
     parser.add_argument(
         "--semesters",
         type=str,
-        help="Comma-separated list of semester names to include (default: all semesters with data)"
+        help=(
+            "Comma-separated list of semester names to include. "
+            "Use 'all' for all semesters with data "
+            "(default: latest semester with data)"
+        )
     )
     
     parser.add_argument(
@@ -88,7 +94,7 @@ def main() -> None:
         # Validate configuration
         errors = validate_config(config)
         if errors:
-            print(f"Error: Configuration validation failed:", file=sys.stderr)
+            print("Error: Configuration validation failed:", file=sys.stderr)
             for error in errors:
                 print(f"  - {error}", file=sys.stderr)
             sys.exit(1)
@@ -124,63 +130,132 @@ def main() -> None:
         # Determine which semesters to include
         if args.semesters:
             # Parse comma-separated list
-            semester_names = [s.strip() for s in args.semesters.split(',')]
-            selected_semesters = []
-            for name in semester_names:
-                semester = get_semester_by_name(config, name)
-                if semester:
-                    selected_semesters.append(semester)
-                else:
-                    print(f"Warning: Semester '{name}' not found in config", file=sys.stderr)
-            
+            semester_names = [s.strip() for s in args.semesters.split(",") if s.strip()]
+            includes_all = any(name.lower() == "all" for name in semester_names)
+            if includes_all:
+                if len(semester_names) > 1:
+                    print(
+                        "Warning: '--semesters all' ignores other semester names.",
+                        file=sys.stderr,
+                    )
+                selected_semesters = filter_semesters_with_data(config.semesters, entries)
+            else:
+                selected_semesters = []
+                seen_semester_names: set[str] = set()
+                for name in semester_names:
+                    semester = get_semester_by_name(config, name)
+                    if semester:
+                        if semester.name not in seen_semester_names:
+                            selected_semesters.append(semester)
+                            seen_semester_names.add(semester.name)
+                    else:
+                        print(f"Warning: Semester '{name}' not found in config", file=sys.stderr)
             if not selected_semesters:
-                print(f"Error: No valid semesters selected", file=sys.stderr)
+                print("Error: No valid semesters selected", file=sys.stderr)
                 sys.exit(1)
         else:
-            # Use all semesters with data
-            selected_semesters = filter_semesters_with_data(config.semesters, entries)
-            
-            if not selected_semesters:
-                print(f"Error: No data found for any semester in the configured date ranges", file=sys.stderr)
+            # Use the latest semester with data by default
+            latest_semester = get_latest_semester_with_data(config.semesters, entries)
+            if latest_semester is None:
+                print("Error: No data found for any semester in the configured date ranges", file=sys.stderr)
                 sys.exit(1)
+            selected_semesters = [latest_semester]
         
         if args.verbose:
             print(f"Semesters to include: {', '.join(s.name for s in selected_semesters)}")
             print()
         
-        # Generate PDF report(s)
-        # For now, we'll generate a single-semester report for the first semester
-        # Multi-semester support will be added in the next step
-        if len(selected_semesters) > 1:
-            print(f"Warning: Multi-semester reporting not yet fully implemented. Using first semester: {selected_semesters[0].name}", file=sys.stderr)
-        
-        semester = selected_semesters[0]
-        semester_entries_dict = group_entries_by_semester(entries, [semester])
-        semester_entries = semester_entries_dict.get(semester.name, [])
-        
-        if not semester_entries:
-            print(f"Error: No entries found for semester {semester.name}", file=sys.stderr)
+        # Generate report(s) for each selected semester.
+        semester_entries_dict = group_entries_by_semester(entries, selected_semesters)
+        semesters_with_entries = [
+            semester
+            for semester in selected_semesters
+            if semester_entries_dict.get(semester.name)
+        ]
+        if not semesters_with_entries:
+            print(
+                "Error: No entries found for the selected semester(s)",
+                file=sys.stderr,
+            )
             sys.exit(1)
-        
+        if len(semesters_with_entries) < len(selected_semesters):
+            missing = [
+                semester.name
+                for semester in selected_semesters
+                if semester.name not in semester_entries_dict
+            ]
+            print(
+                f"Warning: Skipping semester(s) with no data: {', '.join(missing)}",
+                file=sys.stderr,
+            )
         if args.verbose:
-            print(f"Processing {len(semester_entries)} entries for {semester.name}")
-            if args.split_by_team:
-                print("Generating separate PDF reports for each team...")
-            else:
-                print("Generating combined PDF report...")
-        
-        # Pass semester config for calendar-aware expected hours
+            mode_text = (
+                "separate PDF reports for each team"
+                if args.split_by_team
+                else "combined PDF report"
+            )
+            print(f"Generating {mode_text}...")
         if args.split_by_team:
             from .pdf_generator import generate_team_split_reports_with_semester
-            output_files = generate_team_split_reports_with_semester(semester_entries, args.output, semester)
-            
-            print(f"✅ Team reports successfully generated:")
-            for team, file_path in output_files.items():
-                print(f"   📊 {team}: {file_path}")
+            all_output_files: dict[str, dict[str, Path]] = {}
+            for semester in semesters_with_entries:
+                semester_entries = semester_entries_dict[semester.name]
+                semester_output = args.output
+                if len(semesters_with_entries) > 1:
+                    safe_semester_name = "".join(
+                        char if char.isalnum() else "_"
+                        for char in semester.name
+                    ).strip("_").lower()
+                    semester_output = args.output.parent / (
+                        f"{args.output.stem}_{safe_semester_name}{args.output.suffix}"
+                    )
+                if args.verbose:
+                    print(
+                        f"Processing {len(semester_entries)} entries for {semester.name}",
+                    )
+                output_files = generate_team_split_reports_with_semester(
+                    semester_entries,
+                    semester_output,
+                    semester,
+                )
+                all_output_files[semester.name] = output_files
+            print("✅ Team reports successfully generated:")
+            for semester_name, output_files in all_output_files.items():
+                if len(all_output_files) > 1:
+                    print(f"   📚 {semester_name}")
+                for team, file_path in output_files.items():
+                    indent = "      " if len(all_output_files) > 1 else "   "
+                    print(f"{indent}📊 {team}: {file_path}")
         else:
             from .pdf_generator import generate_pdf_report_with_semester
-            generate_pdf_report_with_semester(semester_entries, args.output, semester)
-            print(f"✅ Report successfully generated: {args.output}")
+            generated_files: list[Path] = []
+            for semester in semesters_with_entries:
+                semester_entries = semester_entries_dict[semester.name]
+                semester_output = args.output
+                if len(semesters_with_entries) > 1:
+                    safe_semester_name = "".join(
+                        char if char.isalnum() else "_"
+                        for char in semester.name
+                    ).strip("_").lower()
+                    semester_output = args.output.parent / (
+                        f"{args.output.stem}_{safe_semester_name}{args.output.suffix}"
+                    )
+                if args.verbose:
+                    print(
+                        f"Processing {len(semester_entries)} entries for {semester.name}",
+                    )
+                generate_pdf_report_with_semester(
+                    semester_entries,
+                    semester_output,
+                    semester,
+                )
+                generated_files.append(semester_output)
+            if len(generated_files) == 1:
+                print(f"✅ Report successfully generated: {generated_files[0]}")
+            else:
+                print("✅ Reports successfully generated:")
+                for file_path in generated_files:
+                    print(f"   📄 {file_path}")
         
     except Exception as e:
         print(f"❌ Error generating report: {e}", file=sys.stderr)

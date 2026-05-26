@@ -78,7 +78,7 @@ The system automatically adjusts expected hours based on the semester calendar:
 
 ### Basic Usage
 ```bash
-# Generate report using config.yml (automatically detects semesters with data)
+# Generate report using config.yml (defaults to latest semester with data)
 uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml
 ```
 
@@ -95,6 +95,9 @@ uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml --semest
 
 # Multiple semesters (comma-separated)
 uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml --semesters "Spring 2026,Fall 2026"
+
+# All semesters with data
+uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml --semesters all
 ```
 
 ### Verbose Output
@@ -120,7 +123,7 @@ Generate individual student summaries showing week-by-week participation, hours 
 
 ### Basic Student Summary
 ```bash
-# Generate summaries for all students (uses config.yml)
+# Generate summaries for all students (defaults to latest semester with data)
 uv run student-summary "data/Raw CSV_Detailed.csv" --config config.yml
 ```
 
@@ -140,6 +143,9 @@ uv run student-summary "data/Raw CSV_Detailed.csv" --config config.yml --student
 ```bash
 # Generate summary for specific semester
 uv run student-summary "data/Raw CSV_Detailed.csv" --config config.yml --semesters "Spring 2026"
+
+# Generate summaries for all semesters with data
+uv run student-summary "data/Raw CSV_Detailed.csv" --config config.yml --semesters all
 ```
 
 ### Combined Filters

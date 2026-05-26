@@ -88,3 +88,30 @@ def filter_semesters_with_data(
     
     # Return semesters in original order, filtered to those with data
     return [s for s in semesters if s.name in semester_entries]
+
+
+def get_latest_semester_with_data(
+    semesters: list[SemesterConfig],
+    entries: list[TimeEntry],
+) -> t.Optional[SemesterConfig]:
+    """Return the most recent semester that has at least one time entry.
+    
+    "Most recent" is determined by semester end date, with start date/name
+    used only as deterministic tie-breakers.
+    
+    Args:
+        semesters: List of all configured semesters
+        entries: List of all time entries
+        
+    Returns:
+        The latest semester containing data, or None if none have data
+    """
+    semesters_with_data = filter_semesters_with_data(semesters, entries)
+    if not semesters_with_data:
+        return None
+    
+    # Sorting by end date aligns with reporting recency and semester chronology.
+    return max(
+        semesters_with_data,
+        key=lambda semester: (semester.end_date, semester.start_date, semester.name),
+    )
