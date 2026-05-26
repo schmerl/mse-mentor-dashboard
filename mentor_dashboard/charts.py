@@ -393,6 +393,69 @@ def create_team_comparison_chart(team_name: str, all_teams_weekly_data: dict,
     return fig
 
 
+def create_student_summary_chart(
+    student_name: str,
+    weekly_hours: dict,
+    expected_hours: float,
+    figsize: tuple[float, float] = (10, 6)
+) -> Figure:
+    """Create line chart showing student's weekly hours with expected hours reference.
+    
+    Args:
+        student_name: Name of the student
+        weekly_hours: Dict mapping week_start (datetime) -> hours
+        expected_hours: Expected hours per week
+        figsize: Figure size
+        
+    Returns:
+        matplotlib Figure object
+    """
+    if not weekly_hours:
+        # Create empty chart
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.text(0.5, 0.5, 'No data available', ha='center', va='center', 
+                transform=ax.transAxes, fontsize=14)
+        ax.set_title(f'{student_name} - Weekly Hours', fontsize=16, fontweight='bold')
+        ax.axis('off')
+        return fig
+    
+    # Sort weeks chronologically
+    weeks = sorted(weekly_hours.keys())
+    hours = [weekly_hours[week] for week in weeks]
+    
+    # Create week labels
+    week_labels = [week.strftime('%m/%d') for week in weeks]
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot student hours
+    ax.plot(week_labels, hours, 'o-', linewidth=3, markersize=8, 
+            color='#1f77b4', label=student_name, zorder=3)
+    
+    # Plot expected hours reference line
+    if expected_hours > 0:
+        ax.axhline(y=expected_hours, color='#d62728', linestyle='--', 
+                   linewidth=2, label=f'Expected ({expected_hours:.0f}h)', 
+                   alpha=0.7, zorder=2)
+    
+    # Customize chart
+    ax.set_title(f'{student_name} - Weekly Hours', fontsize=16, fontweight='bold', pad=20)
+    ax.set_xlabel('Week Starting', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Hours', fontsize=12, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc='upper right', framealpha=0.9)
+    
+    # Rotate x-axis labels for better readability
+    plt.xticks(rotation=45)
+    
+    # Set y-axis to start at 0
+    ax.set_ylim(bottom=0)
+    
+    plt.tight_layout()
+    return fig
+
+
 def save_chart_as_png(figure: Figure, output_path: Path) -> None:
     """Save matplotlib figure as PNG file.
     

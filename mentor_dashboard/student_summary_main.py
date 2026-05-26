@@ -1,4 +1,4 @@
-"""Main entry point for mentor dashboard generation."""
+"""Main entry point for student summary generation."""
 
 import argparse
 import sys
@@ -12,12 +12,13 @@ from .semester_filter import (
     get_latest_semester_with_data,
     group_entries_by_semester,
 )
+from .report_generator import generate_student_summary_data
 
 
 def main() -> None:
-    """Main function for command-line interface."""
+    """Main function for student summary command-line interface."""
     parser = argparse.ArgumentParser(
-        description="Generate weekly time tracking reports and visualizations for project teams"
+        description="Generate individual student summary reports with week-by-week participation"
     )
     
     parser.add_argument(
@@ -34,12 +35,6 @@ def main() -> None:
     )
     
     parser.add_argument(
-        "-o", "--output",
-        type=Path,
-        help="Output PDF file path (default: mentor_dashboard_report.pdf)"
-    )
-    
-    parser.add_argument(
         "--semesters",
         type=str,
         help=(
@@ -50,22 +45,34 @@ def main() -> None:
     )
     
     parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable verbose output"
+        "--team",
+        type=str,
+        help="Filter by team name"
     )
     
     parser.add_argument(
-        "--split-by-team",
+        "--student",
+        type=str,
+        help="Filter by student name"
+    )
+    
+    parser.add_argument(
+        "-o", "--output",
+        type=Path,
+        help="Output PDF file path (default: student_summary_report.pdf)"
+    )
+    
+    parser.add_argument(
+        "--verbose",
         action="store_true",
-        help="Create separate PDF files for each team"
+        help="Enable verbose output"
     )
     
     args = parser.parse_args()
     
     # Set default output path if not provided
     if args.output is None:
-        args.output = Path("mentor_dashboard_report.pdf")
+        args.output = Path("student_summary_report.pdf")
     
     # Create output directory if it doesn't exist
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -83,6 +90,10 @@ def main() -> None:
         print(f"Processing CSV file: {args.csv_file}")
         print(f"Loading config: {args.config}")
         print(f"Output will be saved to: {args.output}")
+        if args.team:
+            print(f"Filtering by team: {args.team}")
+        if args.student:
+            print(f"Filtering by student: {args.student}")
     
     try:
         # Load configuration
@@ -116,20 +127,9 @@ def main() -> None:
         
         if args.verbose:
             print(f"Successfully parsed {len(entries)} time entries")
-            
-            # Show summary statistics
-            teams = set(entry.group for entry in entries)
-            users = set(entry.user for entry in entries)
-            total_hours = sum(entry.duration_hours for entry in entries)
-            
-            print(f"Teams found: {', '.join(sorted(teams))}")
-            print(f"Users: {len(users)}")
-            print(f"Total hours logged: {total_hours:.1f}")
-            print()
         
         # Determine which semesters to include
         if args.semesters:
-            # Parse comma-separated list
             semester_names = [s.strip() for s in args.semesters.split(",") if s.strip()]
             includes_all = any(name.lower() == "all" for name in semester_names)
             if includes_all:
@@ -154,18 +154,15 @@ def main() -> None:
                 print("Error: No valid semesters selected", file=sys.stderr)
                 sys.exit(1)
         else:
-            # Use the latest semester with data by default
             latest_semester = get_latest_semester_with_data(config.semesters, entries)
             if latest_semester is None:
-                print("Error: No data found for any semester in the configured date ranges", file=sys.stderr)
+                print("Error: No data found for any semester", file=sys.stderr)
                 sys.exit(1)
             selected_semesters = [latest_semester]
         
         if args.verbose:
             print(f"Semesters to include: {', '.join(s.name for s in selected_semesters)}")
-            print()
         
-        # Generate report(s) for each selected semester.
         semester_entries_dict = group_entries_by_semester(entries, selected_semesters)
         semesters_with_entries = [
             semester
@@ -188,77 +185,67 @@ def main() -> None:
                 f"Warning: Skipping semester(s) with no data: {', '.join(missing)}",
                 file=sys.stderr,
             )
+        
         if args.verbose:
-            mode_text = (
-                "separate PDF reports for each team"
-                if args.split_by_team
-                else "combined PDF report"
+            print("Generating student summaries...")
+        
+        from .pdf_generator import generate_student_summary_pdf_with_semester
+        generated_files: list[Path] = []
+        for semester in semesters_with_entries:
+            semester_entries = semester_entries_dict[semester.name]
+            if args.verbose:
+                print(f"Processing {len(semester_entries)} entries for {semester.name}")
+            summaries = generate_student_summary_data(
+                semester_entries,
+                team_filter=args.team,
+                student_filter=args.student,
             )
-            print(f"Generating {mode_text}...")
-        if args.split_by_team:
-            from .pdf_generator import generate_team_split_reports_with_semester
-            all_output_files: dict[str, dict[str, Path]] = {}
-            for semester in semesters_with_entries:
-                semester_entries = semester_entries_dict[semester.name]
-                semester_output = args.output
-                if len(semesters_with_entries) > 1:
-                    safe_semester_name = "".join(
-                        char if char.isalnum() else "_"
-                        for char in semester.name
-                    ).strip("_").lower()
-                    semester_output = args.output.parent / (
-                        f"{args.output.stem}_{safe_semester_name}{args.output.suffix}"
-                    )
-                if args.verbose:
-                    print(
-                        f"Processing {len(semester_entries)} entries for {semester.name}",
-                    )
-                output_files = generate_team_split_reports_with_semester(
-                    semester_entries,
-                    semester_output,
-                    semester,
+            if not summaries:
+                print(
+                    (
+                        "Warning: No student data found for "
+                        f"{semester.name} with the current filters. Skipping."
+                    ),
+                    file=sys.stderr,
                 )
-                all_output_files[semester.name] = output_files
-            print("✅ Team reports successfully generated:")
-            for semester_name, output_files in all_output_files.items():
-                if len(all_output_files) > 1:
-                    print(f"   📚 {semester_name}")
-                for team, file_path in output_files.items():
-                    indent = "      " if len(all_output_files) > 1 else "   "
-                    print(f"{indent}📊 {team}: {file_path}")
+                continue
+            if args.verbose:
+                print(f"Generated summaries for {len(summaries)} student(s)")
+                for summary in summaries:
+                    print(f"  - {summary.name} ({summary.team}): {summary.total_hours:.1f}h total")
+                print("Generating PDF report...")
+            semester_output = args.output
+            if len(semesters_with_entries) > 1:
+                safe_semester_name = "".join(
+                    char if char.isalnum() else "_"
+                    for char in semester.name
+                ).strip("_").lower()
+                semester_output = args.output.parent / (
+                    f"{args.output.stem}_{safe_semester_name}{args.output.suffix}"
+                )
+            generate_student_summary_pdf_with_semester(
+                summaries,
+                semester_output,
+                semester,
+                semester_entries,
+            )
+            generated_files.append(semester_output)
+        
+        if not generated_files:
+            print(
+                "No student data found matching the specified filters for any selected semester.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if len(generated_files) == 1:
+            print(f"✅ Student summary report successfully generated: {generated_files[0]}")
         else:
-            from .pdf_generator import generate_pdf_report_with_semester
-            generated_files: list[Path] = []
-            for semester in semesters_with_entries:
-                semester_entries = semester_entries_dict[semester.name]
-                semester_output = args.output
-                if len(semesters_with_entries) > 1:
-                    safe_semester_name = "".join(
-                        char if char.isalnum() else "_"
-                        for char in semester.name
-                    ).strip("_").lower()
-                    semester_output = args.output.parent / (
-                        f"{args.output.stem}_{safe_semester_name}{args.output.suffix}"
-                    )
-                if args.verbose:
-                    print(
-                        f"Processing {len(semester_entries)} entries for {semester.name}",
-                    )
-                generate_pdf_report_with_semester(
-                    semester_entries,
-                    semester_output,
-                    semester,
-                )
-                generated_files.append(semester_output)
-            if len(generated_files) == 1:
-                print(f"✅ Report successfully generated: {generated_files[0]}")
-            else:
-                print("✅ Reports successfully generated:")
-                for file_path in generated_files:
-                    print(f"   📄 {file_path}")
+            print("✅ Student summary reports successfully generated:")
+            for file_path in generated_files:
+                print(f"   📄 {file_path}")
         
     except Exception as e:
-        print(f"❌ Error generating report: {e}", file=sys.stderr)
+        print(f"❌ Error generating student summary: {e}", file=sys.stderr)
         if args.verbose:
             import traceback
             traceback.print_exc()

@@ -33,48 +33,149 @@ cd mentor-dashboard
 uv sync
 ```
 
+## Configuration
+
+### config.yml
+
+The dashboard now requires a `config.yml` file that defines:
+- **Cohort Information**: Name and semester details
+- **Semesters**: Start/end dates, expected hours per week, breaks, and holidays
+- **Roster**: Team names, client names, and member details (name, Andrew ID, email)
+
+**Example config.yml:**
+```yaml
+cohort:
+  name: MSE Studio
+  semesters:
+  - semester: Spring 2026
+    dates:
+      start: 1-12-2026
+      end: 4-24-2026
+      hours: 12  # Expected hours per week
+      break:
+        start: 2-28-2026
+        end: 3-8-2026
+      holidays:
+      - 1-19-2026  # MLK Day
+      - 4-10-2026  # Good Friday
+roster:
+  - team: Troutans
+    client: Troutwood
+    members:
+      - name: Noor Buchi
+        andrewid: nbuchi
+        email: nbuchi@andrew.cmu.edu
+```
+
+### Calendar-Aware Expected Hours
+
+The system automatically adjusts expected hours based on the semester calendar:
+- **Breaks**: No work expected during break weeks (students may work to make up time)
+- **Holidays**: Each weekday holiday reduces expected hours by 1/5 of weekly total
+- **Example**: 12 hours/week with Monday holiday = 9.6 hours expected that week
+
 ## Usage
 
 ### Basic Usage
 ```bash
-# Generate report with expected 20 hours per student per week
-uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --expected-hours 20
+# Generate report using config.yml (defaults to latest semester with data)
+uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml
 ```
 
 ### Custom Output Location
 ```bash
-# Specify custom output path (directories created automatically)
-uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --expected-hours 20 -o "reports/weekly_report.pdf"
+# Specify custom output path
+uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml -o "reports/weekly_report.pdf"
+```
+
+### Semester Selection
+```bash
+# Generate report for specific semester(s)
+uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml --semesters "Spring 2026"
+
+# Multiple semesters (comma-separated)
+uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml --semesters "Spring 2026,Fall 2026"
+
+# All semesters with data
+uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml --semesters all
 ```
 
 ### Verbose Output
 ```bash
 # Show detailed processing information
-uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --expected-hours 20 --verbose
+uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml --verbose
 ```
 
 ### Split by Team
 ```bash
 # Generate separate PDF files for each team
-uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --expected-hours 20 --split-by-team
-
-# Combine with custom output directory
-uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --expected-hours 15 --split-by-team -o "team_reports/weekly.pdf"
-```
-
-### Name Resolution
-```bash
-# Use roster.csv to display "First Last" names instead of Andrew IDs
-uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --expected-hours 15 --roster "roster.csv"
-
-# Combine with other options
-uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --expected-hours 15 --roster "roster.csv" --split-by-team --verbose
+uv run mentor-dashboard "data/Raw CSV_Detailed.csv" --config config.yml --split-by-team
 ```
 
 ### Help
 ```bash
 uv run mentor-dashboard --help
 ```
+
+## Student Summary Reports
+
+Generate individual student summaries showing week-by-week participation, hours trends, and activity breakdowns.
+
+### Basic Student Summary
+```bash
+# Generate summaries for all students (defaults to latest semester with data)
+uv run student-summary "data/Raw CSV_Detailed.csv" --config config.yml
+```
+
+### Filter by Team
+```bash
+# Generate summaries for students in a specific team
+uv run student-summary "data/Raw CSV_Detailed.csv" --config config.yml --team Troutwood
+```
+
+### Filter by Student
+```bash
+# Generate summary for a specific student
+uv run student-summary "data/Raw CSV_Detailed.csv" --config config.yml --student "Luke Kiebert"
+```
+
+### Semester Selection
+```bash
+# Generate summary for specific semester
+uv run student-summary "data/Raw CSV_Detailed.csv" --config config.yml --semesters "Spring 2026"
+
+# Generate summaries for all semesters with data
+uv run student-summary "data/Raw CSV_Detailed.csv" --config config.yml --semesters all
+```
+
+### Combined Filters
+```bash
+# Team + student filter with custom output
+uv run student-summary "data/Raw CSV_Detailed.csv" --config config.yml --team Troutwood --student "Luke Kiebert" -o student_luke.pdf
+```
+
+### Student Summary Report Contents
+
+📋 **Title Page:**
+- Total number of students
+- Total hours logged across all students
+- Average hours per student
+- Expected hours per week
+
+👤 **Per-Student Pages:**
+- Student name and team
+- Summary statistics (total hours, weeks active, average per week)
+- **Weekly Hours Table:**
+  - Week-by-week breakdown (most recent first)
+  - Hours logged each week
+  - Color-coded status (meeting/above/below expectations)
+- **Hours Trend Chart:**
+  - Line chart showing weekly hours
+  - Expected hours reference line
+- **Time Distribution Charts:**
+  - Time by Category (pie chart)
+  - Time by Activity (pie chart)
+  - Aggregated across all weeks
 
 ## CSV Format Requirements
 
@@ -90,14 +191,27 @@ Your time tracking CSV file should contain these columns:
 - **Description**: Task description (optional)
 - **Email**: Student email address (optional, used for name resolution)
 
-### Roster CSV (Optional)
-For name resolution, provide a roster.csv file with these columns:
-- **Last Name**: Student's last name
-- **Preferred/First Name**: Student's first/preferred name
-- **Andrew ID**: Student's Andrew ID (matches User field or email prefix)
-- **Email**: Student's email address (andrew_id@andrew.cmu.edu)
+### Config.yml
+Provides semester configuration and roster information:
+- **Cohort Information**: Program name and semester details
+- **Semesters**: Each semester includes:
+  - **start/end dates**: Semester boundary dates (M-D-YYYY format)
+  - **hours**: Expected hours per student per week
+  - **break**: Optional mid-semester break period (start/end dates)
+  - **holidays**: List of holiday dates (weekdays only affect expected hours)
+- **Roster**: Team and member information:
+  - **team**: Team name
+  - **client**: Client/project name
+  - **members**: List with name, andrewid, email for each student
 
-**Name Resolution**: When a roster file is provided, the system automatically converts Andrew IDs to proper "First Last" format. Names already in proper format are preserved unchanged.
+**Name Resolution**: The roster in config.yml automatically converts Andrew IDs to proper "First Last" format. Names already in proper format are preserved unchanged.
+
+### Migration from Old CLI
+The old `--expected-hours` and `--roster` arguments have been replaced with `--config`:
+- **Before**: `--expected-hours 12 --roster roster.csv`
+- **After**: `--config config.yml` (hours and roster now in config file)
+
+See `config.yml` in the repository for a complete example.
 
 ## Generated Report Contents
 

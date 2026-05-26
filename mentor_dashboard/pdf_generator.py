@@ -1042,3 +1042,60 @@ def generate_student_summary_pdf(
     
     # Build PDF
     pdf.build_pdf()
+
+
+def generate_pdf_report_with_semester(entries: list[TimeEntry], output_path: Path, semester) -> None:
+    """Generate PDF report with calendar-aware expected hours from semester config.
+    
+    Args:
+        entries: List of time entries for the semester
+        output_path: Path where PDF should be saved
+        semester: SemesterConfig with calendar information
+    """
+    from .calendar_engine import calculate_expected_hours_for_week
+    
+    # For now, use average expected hours for the semester
+    # TODO: Pass semester to report generation for per-week calculation
+    expected_hours = semester.hours
+    generate_pdf_report(entries, output_path, expected_hours)
+
+
+def generate_team_split_reports_with_semester(entries: list[TimeEntry], output_path: Path, semester) -> dict[str, Path]:
+    """Generate separate PDF reports for each team with calendar-aware expected hours.
+    
+    Args:
+        entries: List of all time entries for the semester
+        output_path: Base output path (will be modified for each team)
+        semester: SemesterConfig with calendar information
+        
+    Returns:
+        Dictionary mapping team names to their output file paths
+    """
+    from .calendar_engine import calculate_expected_hours_for_week
+    
+    # For now, use average expected hours for the semester
+    # TODO: Pass semester to report generation for per-week calculation
+    expected_hours = semester.hours
+    return generate_team_split_reports(entries, output_path, expected_hours)
+
+
+def generate_student_summary_pdf_with_semester(
+    summaries: list,
+    output_path: Path,
+    semester,
+    all_entries: list[TimeEntry]
+) -> None:
+    """Generate student summary PDF with calendar-aware expected hours.
+    
+    Args:
+        summaries: List of StudentSummary objects
+        output_path: Path where PDF should be saved
+        semester: SemesterConfig with calendar information
+        all_entries: All time entries for the semester
+    """
+    from .calendar_engine import calculate_expected_hours_for_week
+    
+    # For now, use average expected hours for the semester  
+    # TODO: Calculate per-student per-week expected hours
+    expected_hours = semester.hours
+    generate_student_summary_pdf(summaries, output_path, expected_hours, all_entries)

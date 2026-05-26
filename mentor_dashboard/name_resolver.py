@@ -2,21 +2,50 @@
 
 import pandas as pd
 import re
+import typing as t
 from typing import Dict, Optional
 
 
 class NameResolver:
     """Resolves names from roster data to display proper 'First Last' format."""
     
-    def __init__(self, roster_path: str):
-        """Initialize name resolver with roster CSV file.
+    def __init__(self, roster_path: t.Optional[str] = None, name_mapping: t.Optional[Dict[str, str]] = None):
+        """Initialize name resolver with roster CSV file or direct mapping.
         
         Args:
-            roster_path: Path to roster.csv file
+            roster_path: Path to roster.csv file (optional if name_mapping provided)
+            name_mapping: Direct name mapping dictionary (optional if roster_path provided)
         """
-        self.roster_df = pd.read_csv(roster_path)
-        self._name_mapping: Optional[Dict[str, str]] = None
-        self._build_name_mapping()
+        if name_mapping is not None:
+            self._name_mapping = name_mapping
+            self.roster_df = None
+        elif roster_path:
+            self.roster_df = pd.read_csv(roster_path)
+            self._name_mapping = None
+            self._build_name_mapping()
+        else:
+            raise ValueError("Either roster_path or name_mapping must be provided")
+    
+    @classmethod
+    def from_config(cls, teams: list) -> "NameResolver":
+        """Create NameResolver from config teams list.
+        
+        Args:
+            teams: List of Team objects from config_loader
+            
+        Returns:
+            NameResolver instance
+        """
+        name_mapping: Dict[str, str] = {}
+        
+        for team in teams:
+            for member in team.members:
+                # Map andrewid to name
+                name_mapping[member.andrewid.lower()] = member.name
+                # Also map the name to itself for consistency
+                name_mapping[member.name.lower()] = member.name
+        
+        return cls(name_mapping=name_mapping)
     
     def _build_name_mapping(self) -> None:
         """Build mapping from Andrew IDs to formatted names."""
@@ -89,5 +118,5 @@ class NameResolver:
         """
         return {
             'total_names_in_roster': len(self._name_mapping) if self._name_mapping else 0,
-            'roster_entries': len(self.roster_df)
+            'roster_entries': len(self.roster_df) if self.roster_df is not None else len(self._name_mapping) if self._name_mapping else 0
         }
